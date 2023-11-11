@@ -19,19 +19,30 @@ with open(exceptions_file, 'w') as file:
      pass
 
 
-def address_parse(addr, exceptions_file, type):
-     address = addr.replace('дом №', '').split('(с')[0]
+def address_parse(address, exceptions_file, type):
+     address_orig = address
+     address = address.replace('дом №', '')
      
-     if '1-ый' in address: address = address.replace('1-ый', '1-й')
-     if '2-ой' in address: address = address.replace('2-ой', '2-й')
-     if '3-ий' in address: address = address.replace('3-ий', '3-й')
+     if '-ый' in address: address = address.replace('-ый', '-й')
+     if '-ой' in address: address = address.replace('-ой', '-й')
+     if '-ий' in address: address = address.replace('-ий', '-й')
+     
+     if '_x0002_' in address: address = address.replace('_x0002_', '-')
      
      if '(корп' in address:
-          address_list = address.split('(корп.')
+          address_list = address.split('(корп')
+          address = f"{address_list[0]}к{address_list[1]}".replace(')', '')
+     if '(стр.' in address:
+          address_list = address.split('(стр.')
+          address = f"{address_list[0]}с{address_list[1]}".replace(')', '')
+     if '(кор' in address:
+          address_list = address.split('(кор')
           address = f"{address_list[0]}к{address_list[1]}".replace(')', '')
      
      while '  ' in address:
           address = address.replace('  ', ' ')
+     
+     if '.' in address: address = address.replace('.', '')
      
      try:
           location = ox.geocode(f'Москва, {address}')
@@ -44,14 +55,34 @@ def address_parse(addr, exceptions_file, type):
                address = address.replace('  ', ' ')
           elif 'к ' in address:
                address = address.replace('к ', 'к')
+          elif 'с ' in address:
+               address = address.replace('с ', 'с')   
+               
+          while '  ' in address:
+               address = address.replace('  ', ' ')  
+          
           try:
                location = ox.geocode(f'Москва, {address}')
                address_coords = Point(location[1], location[0])         
                return address_coords   
           except Exception as e:
-               print(f"Проблемы со зданием: {address}, ошибка: {e}")
-               with open(exceptions_file, 'a') as file:
-                    file.write(f'{address}, {type}\n')
+               '''
+               Ввиду возникновения большого количества исключений (100 штук) в код прописаны строки 72 и 73, которые, фактически, ищут здания не учитывая их строений и корпусов
+               Метод менее точный, чем сделать всё по-умному, но работает
+               '''
+               if ' к' in address: address = address.split(' к')[0]
+               if ' с' in address: address = address.split(' с')[0]
+               
+               while '  ' in address:
+                    address = address.replace('  ', ' ')
+               try:
+                    location = ox.geocode(f'Москва, {address}')
+                    address_coords = Point(location[1], location[0])         
+                    return address_coords   
+               except Exception as e:
+                    print(f"Проблемы со зданием: {address},\n\tоригинал: {address_orig},\n\tошибка: {e}")
+                    with open(exceptions_file, 'a') as file:
+                         file.write(f'{address_orig}, {type}\n')
 
 for index, row in df.iterrows():
      address_original = row['Границы участка']
@@ -61,25 +92,13 @@ for index, row in df.iterrows():
      if 'дома' in address_original:
           address_original = address_original.replace('дома', 'дом')
      
-     # address = row['Границы участка'].replace('дом №', '').split('(с')[0]
-     # address = address.replace('  ', '')
-     
-     # # TODO: ДОПИЛИТЬ С ФУНКЦИЕЙ
-     
-     # address = address_parse(address_original)
-     
-     # location = ox.geocode(f'Москва, {address}')
-     # address_coords = Point(location[1], location[0])
-     
      address_coords = address_parse(address_original, exceptions_file, 'Границы участка')
      
      uchastok_addr = row['Номер участка']
      if pd.isna(uchastok_addr):
           if previous_uchastok is not None:
-               uchastok_addr = previous_uchastok       
-     # uchastok_addr_coords = address_parse(uchastok_addr)
+               uchastok_addr = previous_uchastok 
                
-     
      if pd.isna(uik_addr):
           if previous_uik is not None:
                uik_addr = previous_uik
